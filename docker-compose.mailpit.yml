@@ -1,4 +1,4 @@
-name: oficina-mecanica-fase-1
+name: oficina-mecanica
 
 services:
   mailpit:

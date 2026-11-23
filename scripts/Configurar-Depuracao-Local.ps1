@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
 $arquivoEnv = Join-Path $raiz '.env'
-$projetoApi = Join-Path $raiz 'src\OficinaMecanicaFase1.Api\OficinaMecanicaFase1.Api.csproj'
+$projetoApi = Join-Path $raiz 'src\OficinaMecanica.Api\OficinaMecanica.Api.csproj'
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw 'SDK .NET não encontrado.'

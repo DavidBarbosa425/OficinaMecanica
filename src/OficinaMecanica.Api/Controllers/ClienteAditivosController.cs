@@ -1,0 +1,46 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using OficinaMecanica.Api.OrdensServico;
+using OficinaMecanica.Application.OrdensServico;
+
+namespace OficinaMecanica.Api.Controllers;
+
+[ApiController]
+[Route("api/cliente/ordens-servico/{numero:long}/aditivos")]
+[Tags("Cliente - aditivos")]
+[AllowAnonymous]
+public sealed class ClienteAditivosController : OficinaControllerBase
+{
+    private readonly AditivoService _aditivoService;
+
+    public ClienteAditivosController(AditivoService aditivoService)
+    {
+        _aditivoService = aditivoService;
+    }
+
+    [HttpPost("{aditivoId:guid}/consulta")]
+    [ProducesResponseType(typeof(AditivoResponse), 200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> ConsultarClienteAsync([FromRoute] long numero, [FromRoute] Guid aditivoId, [FromBody] ConsultarAditivoRequest entrada, CancellationToken ct)
+    {
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        var aditivo = await _aditivoService.ConsultarClienteAsync(numero, aditivoId, entrada.Documento, ct);
+        return aditivo is null ? NotFound() : Ok(AditivoResponse.De(aditivo, numero));
+    }
+
+    [HttpPost("{aditivoId:guid}/decisao")]
+    [ProducesResponseType(typeof(AditivoResponse), 200)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), 400)]
+    [ProducesResponseType(typeof(ProblemDetails), 409)]
+    public async Task<IActionResult> DecidirAsync([FromRoute] long numero, [FromRoute] Guid aditivoId, [FromBody] DecidirAditivoRequest entrada, CancellationToken ct)
+    {
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        var resultado = await _aditivoService.DecidirAsync(numero, aditivoId, entrada.Documento,
+            entrada.CodigoAcesso, entrada.Aprovar, entrada.Motivo, ct);
+        return resultado.Erro == ErroOrdemServico.Nenhum
+            ? Ok(AditivoResponse.De((await _aditivoService.ConsultarInternoAsync(numero, aditivoId, ct))!, numero))
+            : ResponderErroOrdemServico(resultado, "aditivo", null);
+    }
+}

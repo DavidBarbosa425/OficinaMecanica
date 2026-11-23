@@ -5,7 +5,7 @@
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>cobertura</Format>
-          <Include>[OficinaMecanicaFase1.Domain]*</Include>
+          <Include>[OficinaMecanica.Domain]*</Include>
           <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
           <SingleHit>false</SingleHit>
         </Configuration>

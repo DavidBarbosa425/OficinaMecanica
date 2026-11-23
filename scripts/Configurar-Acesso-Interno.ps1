@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
 $arquivoEnv = Join-Path $raiz '.env'
-$projetoApi = Join-Path $raiz 'src\OficinaMecanicaFase1.Api\OficinaMecanicaFase1.Api.csproj'
+$projetoApi = Join-Path $raiz 'src\OficinaMecanica.Api\OficinaMecanica.Api.csproj'
 
 if (-not (Test-Path -LiteralPath $arquivoEnv)) {
     throw 'Configure primeiro a senha do SQL Server no arquivo .env.'

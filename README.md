@@ -1,4 +1,4 @@
-# Oficina Mecânica — Fase 1
+# Oficina Mecânica
 
 Este diretório é a raiz do **repositório do back-end** da oficina mecânica. A documentação DDD usada na implementação também está publicada em [`docs/ddd`](docs/ddd), com índice de navegação em [`docs/index.html`](docs/index.html).
 
@@ -6,14 +6,14 @@ Este diretório é a raiz do **repositório do back-end** da oficina mecânica. 
 
 ## Estrutura
 
-- `OficinaMecanicaFase1.slnx`: solução .NET 10.
-- `src/OficinaMecanicaFase1.Api`: interface HTTP, contratos de entrada/saída e OpenAPI.
-- `src/OficinaMecanicaFase1.Api/DependencyInjection`: ponto de composição dos serviços, autenticação e autorização.
-- `src/OficinaMecanicaFase1.Application`: coordenação dos casos de uso.
-- `src/OficinaMecanicaFase1.Domain`: regras e conceitos do domínio.
-- `src/OficinaMecanicaFase1.Infrastructure`: adaptações técnicas e persistência.
-- `src/OficinaMecanicaFase1.Infrastructure/DependencyInjection`: registro de DbContexts e repositórios SQL Server.
-- `tests/OficinaMecanicaFase1.Infrastructure.Tests`: integração com um SQL Server isolado por teste.
+- `OficinaMecanica.slnx`: solução .NET 10.
+- `src/OficinaMecanica.Api`: interface HTTP, contratos de entrada/saída e OpenAPI.
+- `src/OficinaMecanica.Api/DependencyInjection`: ponto de composição dos serviços, autenticação e autorização.
+- `src/OficinaMecanica.Application`: coordenação dos casos de uso.
+- `src/OficinaMecanica.Domain`: regras e conceitos do domínio.
+- `src/OficinaMecanica.Infrastructure`: adaptações técnicas e persistência.
+- `src/OficinaMecanica.Infrastructure/DependencyInjection`: registro de DbContexts e repositórios SQL Server.
+- `tests/OficinaMecanica.Infrastructure.Tests`: integração com um SQL Server isolado por teste.
 - `docker-compose.yml`: API e SQL Server local com volume persistente.
 - `scripts/Configurar-Depuracao-Local.ps1`: conexão local do Visual Studio armazenada nos User Secrets.
 - `scripts/Configurar-Acesso-Interno.ps1`: chave JWT local e primeiro administrador fora do Git.
@@ -73,7 +73,7 @@ O teste `ArquiteturaTests` confere as dependências compiladas de `Domain` e `Ap
 
 ### Como a API HTTP está organizada
 
-Os endpoints ficam em classes na pasta `src/OficinaMecanicaFase1.Api/Controllers`, agrupadas por assunto e pelas etapas da ordem de serviço. Cada classe herda de `ControllerBase`: `[Route]` define o prefixo da URL, `[HttpGet]`, `[HttpPost]`, `[HttpPut]`, `[HttpPatch]` e `[HttpDelete]` indicam o método HTTP, e `[Authorize(Policy = "...")]` aplica a permissão necessária. O `Program.cs` chama `AddOficinaMecanica()` para registrar controllers, casos de uso, persistência, Identity, JWT e políticas; depois configura o pipeline HTTP com `MapControllers()`. O ponto de composição fica na API, enquanto `Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs` mantém os detalhes de registro do SQL Server e dos repositórios. Os corpos JSON usam os contratos em `Api/Contracts` e as ações chamam os serviços da camada Application; as regras do domínio não ficam nos controllers. Por exemplo, `ClientesController.CriarClienteAsync` atende `POST /api/clientes`, valida pelo caso de uso e retorna `201 Created` com o cliente cadastrado.
+Os endpoints ficam em classes na pasta `src/OficinaMecanica.Api/Controllers`, agrupadas por assunto e pelas etapas da ordem de serviço. Cada classe herda de `ControllerBase`: `[Route]` define o prefixo da URL, `[HttpGet]`, `[HttpPost]`, `[HttpPut]`, `[HttpPatch]` e `[HttpDelete]` indicam o método HTTP, e `[Authorize(Policy = "...")]` aplica a permissão necessária. O `Program.cs` chama `AddOficinaMecanica()` para registrar controllers, casos de uso, persistência, Identity, JWT e políticas; depois configura o pipeline HTTP com `MapControllers()`. O ponto de composição fica na API, enquanto `Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs` mantém os detalhes de registro do SQL Server e dos repositórios. Os corpos JSON usam os contratos em `Api/Contracts` e as ações chamam os serviços da camada Application; as regras do domínio não ficam nos controllers. Por exemplo, `ClientesController.CriarClienteAsync` atende `POST /api/clientes`, valida pelo caso de uso e retorna `201 Created` com o cliente cadastrado.
 
 ## Executar com Docker Compose
 
@@ -110,7 +110,7 @@ Para executar localmente junto da API, use o Compose adicional. O volume `dados_
 docker compose -f .\docker-compose.yml -f .\docker-compose.n8n.yml up -d --build --wait
 ```
 
-Se já houver outro Compose da Fase 1 usando o mesmo nome ou as portas `1433` e `5080`, isole esta execução e escolha portas livres. Neste exemplo, SQL Server usa `1434` e API usa `5081`; o n8n continua em `5678`:
+O projeto Compose usa o nome ``oficina-mecanica`` e cria volumes próprios. Se outra instância estiver usando as portas `1433` e `5080`, isole esta execução e escolha portas livres. Neste exemplo, SQL Server usa `1434` e API usa `5081`; o n8n continua em `5678`:
 
 ```powershell
 $env:SQLSERVER_PORT = '1434'
@@ -163,7 +163,7 @@ docker compose up -d --wait sqlserver
 docker compose ps
 ```
 
-No Visual Studio, selecione `OficinaMecanicaFase1.Api` como projeto de inicialização, o perfil `http` e pressione F5. O perfil abre `http://localhost:5080/swagger`. A API rodando pelo Visual Studio usa o banco `OficinaMecanica` do SQL Server no Compose e aplica migrations pendentes ao iniciar. Para voltar a executar a API em contêiner, encerre a depuração no Visual Studio e use `docker compose up --build -d api`. Não execute as duas APIs simultaneamente na mesma porta 5080.
+No Visual Studio, selecione `OficinaMecanica.Api` como projeto de inicialização, o perfil `http` e pressione F5. O perfil abre `http://localhost:5080/swagger`. A API rodando pelo Visual Studio usa o banco `OficinaMecanica` do SQL Server no Compose e aplica migrations pendentes ao iniciar. Para voltar a executar a API em contêiner, encerre a depuração no Visual Studio e use `docker compose up --build -d api`. Não execute as duas APIs simultaneamente na mesma porta 5080.
 
 ## Contas internas e JWT
 
@@ -182,7 +182,7 @@ Se a senha inicial do Administrador precisar ser redefinida, pare a API e execut
 
 Se contas de teste aparecerem no banco local, execute `powershell -ExecutionPolicy Bypass -File .\scripts\Limpar-Contas-Teste.ps1`. O comando remove somente `admin@teste.local` e `atendente@teste.local`, recria o Administrador configurado se necessário e solicita a redefinição segura da senha.
 
-Com Docker Desktop ligado, execute `dotnet test .\OficinaMecanicaFase1.slnx -c Release` para rodar os testes em SQL Server descartável. Eles verificam ausência de token, token inválido ou expirado, login, acesso permitido e papel sem permissão. A aplicação precisa de uma chave de 32 bytes aleatórios em Base64; o script a gera e a guarda fora do repositório.
+Com Docker Desktop ligado, execute `dotnet test .\OficinaMecanica.slnx -c Release` para rodar os testes em SQL Server descartável. Eles verificam ausência de token, token inválido ou expirado, login, acesso permitido e papel sem permissão. A aplicação precisa de uma chave de 32 bytes aleatórios em Base64; o script a gera e a guarda fora do repositório.
 
 ## Executar a API no host
 
@@ -190,9 +190,9 @@ Para executar sem contêiner da API, mantenha o SQL Server em execução e confi
 
 ```powershell
 $env:ConnectionStrings__Oficina = 'Server=localhost,1433;Database=OficinaMecanica;User Id=sa;Password=SENHA_LOCAL;Encrypt=True;TrustServerCertificate=True'
-dotnet restore .\OficinaMecanicaFase1.slnx
-dotnet build .\OficinaMecanicaFase1.slnx -c Release
-dotnet run --project .\src\OficinaMecanicaFase1.Api\OficinaMecanicaFase1.Api.csproj --launch-profile http
+dotnet restore .\OficinaMecanica.slnx
+dotnet build .\OficinaMecanica.slnx -c Release
+dotnet run --project .\src\OficinaMecanica.Api\OficinaMecanica.Api.csproj --launch-profile http
 ```
 
 Substitua `SENHA_LOCAL` no terminal, sem salvar a senha no código ou em arquivo versionado. Limpe a variável quando terminar: `Remove-Item Env:ConnectionStrings__Oficina`.
@@ -210,16 +210,16 @@ A variável de ambiente `Banco__Inicializacao` controla a preparação do banco 
 | `Externa` | Inicia a API com o banco já preparado. Use nas réplicas depois que a etapa de preparação terminar com sucesso. |
 
 
-O modelo EF Core inicial tem a tabela técnica `RegistrosPersistencia`, criada pela migration `CriarPersistenciaInicial`; ela permite verificar gravação e leitura sem antecipar as entidades do negócio. A migration está versionada em `src/OficinaMecanicaFase1.Infrastructure/Persistence/Migrations`. Para mudanças futuras no modelo, instale a ferramenta de migrations do EF Core 10 e gere uma nova migration apontando para o projeto de infraestrutura e o projeto de inicialização da API. Uma migration deve ser revisada antes de aplicar em outros ambientes.
+O modelo EF Core inicial tem a tabela técnica `RegistrosPersistencia`, criada pela migration `CriarPersistenciaInicial`; ela permite verificar gravação e leitura sem antecipar as entidades do negócio. A migration está versionada em `src/OficinaMecanica.Infrastructure/Persistence/Migrations`. Para mudanças futuras no modelo, instale a ferramenta de migrations do EF Core 10 e gere uma nova migration apontando para o projeto de infraestrutura e o projeto de inicialização da API. Uma migration deve ser revisada antes de aplicar em outros ambientes.
 
 ```powershell
-dotnet test .\OficinaMecanicaFase1.slnx -c Release
+dotnet test .\OficinaMecanica.slnx -c Release
 docker compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -No -Q 'SELECT MigrationId FROM OficinaMecanica.dbo.__EFMigrationsHistory'
 ```
 
-O teste de integração cria um SQL Server descartável próprio por meio do Testcontainers, aplica a migration, grava um registro e lê o mesmo registro em outro `DbContext`. O mecanismo Docker Linux deve estar ligado para a suíte completa. O comando `sqlcmd` solicita a senha interativamente. Os testes não usam o volume da aplicação. Os testes de integração possuem a categoria `Integration`; para executar somente as regras sem Docker, use `dotnet test .\OficinaMecanicaFase1.slnx -c Release --filter "Category!=Integration"`. A suíte completa exige Docker funcional.
+O teste de integração cria um SQL Server descartável próprio por meio do Testcontainers, aplica a migration, grava um registro e lê o mesmo registro em outro `DbContext`. O mecanismo Docker Linux deve estar ligado para a suíte completa. O comando `sqlcmd` solicita a senha interativamente. Os testes não usam o volume da aplicação. Os testes de integração possuem a categoria `Integration`; para executar somente as regras sem Docker, use `dotnet test .\OficinaMecanica.slnx -c Release --filter "Category!=Integration"`. A suíte completa exige Docker funcional.
 
-Para medir a cobertura das regras de domínio, execute `dotnet test .\OficinaMecanicaFase1.slnx -c Release --settings .\coverage.runsettings --collect:"XPlat Code Coverage" --results-directory .\TestResults`. O relatório resumido está em `docs/cobertura-dominio.md`; a medição auditada está versionada em `docs/cobertura-auditoria.cobertura.xml`. Novas execuções geram XML em `TestResults`.
+Para medir a cobertura das regras de domínio, execute `dotnet test .\OficinaMecanica.slnx -c Release --settings .\coverage.runsettings --collect:"XPlat Code Coverage" --results-directory .\TestResults`. O relatório resumido está em `docs/cobertura-dominio.md`; a medição auditada está versionada em `docs/cobertura-auditoria.cobertura.xml`. Novas execuções geram XML em `TestResults`.
 
 O resultado da varredura de dependências e código, as correções de configuração local e a limitação do scan da imagem estão em `docs/relatorio-vulnerabilidades.md`. Refaça as consultas de vulnerabilidades antes de uma nova entrega, pois os avisos publicados podem mudar.
 
@@ -431,7 +431,7 @@ Start-Process http://localhost:5080/swagger
 
 `GET /api/saude` retorna `{"status":"operacional"}`. A interface Swagger usa os arquivos do pacote instalado, sem dependência de CDN.
 
-As configurações comuns ficam em `src/OficinaMecanicaFase1.Api/appsettings.json`. A conexão é obrigatória via variável `ConnectionStrings__Oficina` ou User Secrets `ConnectionStrings:Oficina`; não grave senhas nem a chave JWT em arquivos versionados. Falhas inesperadas e respostas HTTP sem corpo usam `application/problem+json` quando o cliente aceita JSON, com um identificador `traceId` para suporte.
+As configurações comuns ficam em `src/OficinaMecanica.Api/appsettings.json`. A conexão é obrigatória via variável `ConnectionStrings__Oficina` ou User Secrets `ConnectionStrings:Oficina`; não grave senhas nem a chave JWT em arquivos versionados. Falhas inesperadas e respostas HTTP sem corpo usam `application/problem+json` quando o cliente aceita JSON, com um identificador `traceId` para suporte.
 
 ## Pré-requisitos
 
@@ -448,12 +448,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Verificar-Ambiente.ps1
 
 O script só lê o ambiente; não instala programas nem expõe senhas. Se não houver SDK .NET 10 ou Docker, instale pelas páginas oficiais abaixo e execute novamente. O Docker será usado para executar SQL Server e a API em contêineres quando o ambiente completo estiver configurado.
 
-## Repositório de entrega e documentação pública
+## Documentação DDD
 
-O remoto de entrega é `https://github.com/CarolsAragao/OficinaMecanicaFase1.git`.
-Segundo a orientação posterior do professor informada pela equipe, o repositório
-pode permanecer **público**. A consulta anônima retornou HTTP 200 em 27/10/2026,
-o que permite a `soat-architecture` ler o código sem convite. A pasta `docs`
-já contém `index.html` e pode ser publicada pelo GitHub Pages do próprio
-repositório, selecionando `main` e `/docs` em Settings > Pages. O Pages foi publicado em 27/10/2026 em
-`https://carolsaragao.github.io/OficinaMecanicaFase1/`: o índice público reúne os dois Event Stormings, os diagramas DDD e a linguagem ubíqua. Após atualizar a documentação, valide novamente o site como visitante.
+O [índice da documentação](docs/index.html) reúne os dois Event Stormings, os diagramas DDD e a linguagem ubíqua. Para publicar a documentação com GitHub Pages, selecione a branch `main` e a pasta `/docs` nas configurações de Pages do repositório.

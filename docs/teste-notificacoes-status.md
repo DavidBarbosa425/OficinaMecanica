@@ -7,7 +7,7 @@ O objetivo é conferir que cada mudança real de status cria um aviso, que falha
 Abra Docker Desktop com contêineres Linux e aguarde o mecanismo iniciar. Encerre uma API aberta pelo Visual Studio se ela estiver usando a mesma porta do Compose. Use PowerShell na pasta do projeto:
 
 ```powershell
-Set-Location C:\Users\Carol\Desktop\OficinaMecanicaFase1
+Set-Location .\OficinaMecanica
 docker version
 ```
 
@@ -18,7 +18,7 @@ O comando deve mostrar a seção do servidor Docker. Use o `.env` já configurad
 Na raiz do projeto:
 
 ```powershell
-dotnet test .\OficinaMecanicaFase1.slnx -c Release --logger "console;verbosity=normal"
+dotnet test .\OficinaMecanica.slnx -c Release --logger "console;verbosity=normal"
 ```
 
 Resultado esperado: todos aprovados, nenhuma falha e nenhum ignorado. Os testes SQL/Mailpit criam os próprios contêineres e bancos descartáveis; não usam o volume local da aplicação.
@@ -26,7 +26,7 @@ Resultado esperado: todos aprovados, nenhuma falha e nenhum ignorado. Os testes 
 Para executar somente os testes diretamente ligados a esta correção:
 
 ```powershell
-dotnet test .\OficinaMecanicaFase1.slnx -c Release --filter "FullyQualifiedName~OutboxSqlServerTests|FullyQualifiedName~ProcessadorNotificacoesStatusTests|FullyQualifiedName~NotificadorStatusSmtpTests"
+dotnet test .\OficinaMecanica.slnx -c Release --filter "FullyQualifiedName~OutboxSqlServerTests|FullyQualifiedName~ProcessadorNotificacoesStatusTests|FullyQualifiedName~NotificadorStatusSmtpTests"
 ```
 
 O que eles demonstram:

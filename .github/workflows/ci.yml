@@ -36,12 +36,12 @@ jobs:
 
       # Baixa os pacotes NuGet usados pela solução.
       - name: Restaurar dependências
-        run: dotnet restore OficinaMecanicaFase1.slnx
+        run: dotnet restore OficinaMecanica.slnx
 
       # Compila a solução em modo Release.
       - name: Compilar
-        run: dotnet build OficinaMecanicaFase1.slnx --configuration Release --no-restore
+        run: dotnet build OficinaMecanica.slnx --configuration Release --no-restore
 
       # Executa os testes da solução.
       - name: Rodar testes
-        run: dotnet test OficinaMecanicaFase1.slnx --configuration Release --no-build
+        run: dotnet test OficinaMecanica.slnx --configuration Release --no-build
