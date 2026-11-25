@@ -65,6 +65,106 @@ O arquivo [`infra/main.tf`](infra/main.tf) usa Terraform e comandos locais para 
 
 O cluster `docker-desktop` é separado do cluster `oficina-tf`. A implantação no Kubernetes do Docker Desktop foi feita diretamente com `kubectl`; o Terraform atual não cria nem administra esse cluster.
 
+### Provisionar o laboratório com Terraform (Windows/PowerShell)
+
+O [`infra/main.tf`](infra/main.tf) requer Terraform 1.4 ou superior e usa recursos `terraform_data` com comandos locais. Não utiliza um provedor de nuvem. A ordem definida no arquivo é:
+
+| Recurso Terraform | O que executa |
+| --- | --- |
+| `terraform_data.cluster` | Cria o cluster kind `oficina-tf` no Docker. |
+| `terraform_data.banco` | Aplica ConfigMap, PVC de 5 GiB, Deployment e Service do SQL Server. |
+| `terraform_data.migracao` | Aguarda o Deployment do SQL, aplica o Job `oficina-migracao` e espera sua conclusão. |
+| `terraform_data.api` | Aplica Deployment e Service da API e aguarda o rollout. |
+| `terraform_data.escala_api` | Aplica o HPA da API, configurado para 1 a 3 Pods conforme CPU e memória. |
+
+Use Docker Desktop com contêineres Linux em execução; instale `docker`, `kind`, `kubectl` e `terraform` e deixe os comandos disponíveis no `PATH`. A imagem da API é construída pelo `Dockerfile` do repositório. Na **raiz** do clone, prepare `.env` conforme a seção [Executar com Docker Compose](#executar-com-docker-compose): preencha `MSSQL_SA_PASSWORD` e execute `Configurar-Acesso-Interno.ps1` para gerar `JWT_SIGNING_KEY`, `BOOTSTRAP_ADMIN_EMAIL` e `BOOTSTRAP_ADMIN_PASSWORD`. Não é preciso iniciar o Compose para usar o cluster. Não publique `.env`, senhas ou o estado local do Terraform.
+
+Confira as ferramentas e inicialize o Terraform **dentro de `infra`**:
+
+```powershell
+docker info
+kind version
+kubectl version --client
+terraform version
+cd .\infra
+terraform fmt -check
+terraform init
+terraform validate
+terraform plan
+```
+
+Na primeira execução, aplique **somente** `terraform_data.cluster`. Os outros recursos precisam da imagem e dos Secrets que serão preparados em seguida. A opção `-target` é usada apenas nessa preparação inicial; depois execute um `apply` completo.
+
+```powershell
+terraform apply -target=terraform_data.cluster
+kubectl --context kind-oficina-tf get nodes
+```
+
+Volte à raiz do repositório, construa a imagem com o nome esperado pelos manifestos e carregue-a no cluster criado pelo Terraform:
+
+```powershell
+cd ..
+docker build -t oficina-api:local .
+kind load docker-image oficina-api:local --name oficina-tf
+```
+
+Ainda na raiz, crie os quatro Secrets exigidos pelos manifestos. Os valores vêm do `.env` local; o comando não imprime os valores. Faça isso apenas na primeira criação do cluster. Se alterar um Secret posteriormente, atualize-o e reinicie os Pods que o consomem.
+
+```powershell
+$cfg = @{}
+Get-Content .env | Where-Object { $_ -match '^[A-Z_]+=' } | ForEach-Object {
+    $nome, $valor = $_ -split '=', 2
+    $cfg[$nome] = $valor
+}
+foreach ($nome in 'MSSQL_SA_PASSWORD', 'JWT_SIGNING_KEY', 'BOOTSTRAP_ADMIN_EMAIL', 'BOOTSTRAP_ADMIN_PASSWORD') {
+    if ([string]::IsNullOrWhiteSpace($cfg[$nome])) { throw "Falta $nome no .env" }
+}
+
+kubectl --context kind-oficina-tf create secret generic sqlserver-secret --from-literal="MSSQL_SA_PASSWORD=$($cfg['MSSQL_SA_PASSWORD'])"
+$conexao = "Server=sqlserver,1433;Database=OficinaMecanica;User Id=sa;Password=$($cfg['MSSQL_SA_PASSWORD']);Encrypt=True;TrustServerCertificate=True"
+kubectl --context kind-oficina-tf create secret generic oficina-api-secret --from-literal="ConnectionStrings__Oficina=$conexao"
+kubectl --context kind-oficina-tf create secret generic oficina-jwt-secret --from-literal="Jwt__SigningKey=$($cfg['JWT_SIGNING_KEY'])"
+kubectl --context kind-oficina-tf create secret generic oficina-admin-secret `
+  --from-literal="Bootstrap__AdminEmail=$($cfg['BOOTSTRAP_ADMIN_EMAIL'])" `
+  --from-literal="Bootstrap__AdminPassword=$($cfg['BOOTSTRAP_ADMIN_PASSWORD'])"
+Remove-Variable cfg, conexao
+```
+
+Agora aplique o restante e confira cada etapa. O `terraform plan` final deve mostrar `No changes`; isso confirma o estado do Terraform, enquanto os comandos `kubectl` verificam os recursos em execução.
+
+```powershell
+cd .\infra
+terraform apply
+terraform plan
+kubectl --context kind-oficina-tf get nodes,deployments,pods,services,pvc,jobs,hpa
+kubectl --context kind-oficina-tf wait --for=condition=complete job/oficina-migracao --timeout=300s
+```
+
+Para o HPA receber métricas no kind, instale o [Metrics Server v0.9.1](https://github.com/kubernetes-sigs/metrics-server/releases/tag/v0.9.1) no cluster novo. A versão 0.9.x requer Kubernetes 1.34 ou superior; confira a versão do cluster com `kubectl --context kind-oficina-tf version`. Neste laboratório, o kubelet apresenta certificado sem o IP necessário para validação. O patch abaixo desliga **somente para o teste local** a verificação desse certificado pelo Metrics Server. Ele não é uma configuração para produção. O arquivo do patch contorna problemas de aspas ao passar JSON diretamente pelo PowerShell.
+
+```powershell
+kubectl --context kind-oficina-tf apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.1/components.yaml
+$patchFile = Join-Path $env:TEMP 'oficina-metrics-server-patch.json'
+@'
+[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]
+'@ | Set-Content -LiteralPath $patchFile -Encoding ascii
+kubectl --context kind-oficina-tf -n kube-system patch deployment metrics-server --type=json --patch-file $patchFile
+Remove-Item -LiteralPath $patchFile
+kubectl --context kind-oficina-tf -n kube-system rollout status deployment/metrics-server --timeout=180s
+kubectl --context kind-oficina-tf top pods
+kubectl --context kind-oficina-tf get hpa
+```
+
+Para acessar a API pela máquina, mantenha este comando aberto em um terminal:
+
+```powershell
+kubectl --context kind-oficina-tf port-forward service/oficina-api 5080:80
+```
+
+Em outro terminal, consulte `http://localhost:5080/api/saude`, `http://localhost:5080/api/saude/banco` e `http://localhost:5080/swagger`. O primeiro endpoint verifica a resposta HTTP da API; o segundo verifica a conexão com o banco naquele momento. `Ctrl+C` encerra apenas o encaminhamento de porta.
+
+Se uma etapa falhar, consulte `kubectl --context kind-oficina-tf get pods`, `kubectl --context kind-oficina-tf describe pod NOME_DO_POD` e `kubectl --context kind-oficina-tf logs job/oficina-migracao`; corrija a causa antes de repetir `terraform apply`. Um Job concluído com nome fixo não executa migrations novas só porque o manifesto foi reaplicado. Preserve `infra/terraform.tfstate`: sem esse estado, Terraform perde a referência aos recursos locais que criou. Para descartar o laboratório de propósito, use `terraform destroy` dentro de `infra`; isso remove o cluster kind e **os dados do PVC do SQL Server**. Faça backup dos dados antes, se necessário.
+
 O workflow [`ci.yml`](.github/workflows/ci.yml) executa em pushes para `main` e em pull requests com destino à `main`. Ele instala o .NET 10, restaura dependências, compila a solução e executa os testes. O CI não publica uma imagem Docker nem implanta a aplicação. O CD ainda não está configurado.
 
 Os arquivos de estado do Terraform (`*.tfstate`) e planos (`*.tfplan`) são locais e ignorados pelo Git. Os comandos `git rm --cached` removem arquivos do rastreamento do Git sem apagar as cópias locais.
