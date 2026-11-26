@@ -1,5 +1,5 @@
 # Nome que aparecerá na página de Actions do GitHub.
-name: CI
+name: CI/CD - laboratório kind
 
 # Executa em push para a main e em pull requests com destino à main.
 on:
@@ -11,6 +11,7 @@ on:
     # Só inicia em pull requests cujo destino é a branch main.
     branches:
       - main
+  workflow_dispatch:
 
 # Dá ao workflow apenas permissão de leitura do código.
 permissions:
@@ -20,7 +21,7 @@ permissions:
 jobs:
   compilar-e-testar:
     # Usa uma máquina Linux temporária do GitHub.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     # Etapas executadas em sequência.
     steps:
@@ -45,3 +46,131 @@ jobs:
       # Executa os testes da solução.
       - name: Rodar testes
         run: dotnet test OficinaMecanica.slnx --configuration Release --no-build
+
+  implantar-no-kind:
+    name: Implantar e validar no kind
+    needs: compilar-e-testar
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+
+      - name: Conferir Secrets obrigatórios
+        shell: bash
+        env:
+          MSSQL_SA_PASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: |
+          for nome in MSSQL_SA_PASSWORD JWT_SIGNING_KEY BOOTSTRAP_ADMIN_EMAIL BOOTSTRAP_ADMIN_PASSWORD; do
+            if [[ -z "${!nome}" ]]; then
+              echo "Secret ausente: $nome" >&2
+              exit 1
+            fi
+          done
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Instalar kind
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/kind" \
+            https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64
+          chmod +x "$RUNNER_TEMP/kind"
+          sudo install "$RUNNER_TEMP/kind" /usr/local/bin/kind
+          kind version
+          kubectl version --client
+
+      - name: Validar Terraform
+        working-directory: infra
+        run: |
+          terraform fmt -check
+          terraform init -input=false
+          terraform validate
+
+      - name: Criar cluster kind pelo Terraform
+        working-directory: infra
+        run: terraform apply -input=false -auto-approve -target=terraform_data.cluster
+
+      - name: Construir e carregar imagem da API
+        run: |
+          docker build -t oficina-api:local .
+          kind load docker-image oficina-api:local --name oficina-tf
+
+      - name: Criar Secrets no cluster temporário
+        shell: bash
+        env:
+          MSSQL_SA_PASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: |
+          kubectl --context kind-oficina-tf create secret generic sqlserver-secret \
+            --from-literal="MSSQL_SA_PASSWORD=$MSSQL_SA_PASSWORD"
+          conexao="Server=sqlserver,1433;Database=OficinaMecanica;User Id=sa;Password=$MSSQL_SA_PASSWORD;Encrypt=True;TrustServerCertificate=True"
+          kubectl --context kind-oficina-tf create secret generic oficina-api-secret \
+            --from-literal="ConnectionStrings__Oficina=$conexao"
+          kubectl --context kind-oficina-tf create secret generic oficina-jwt-secret \
+            --from-literal="Jwt__SigningKey=$JWT_SIGNING_KEY"
+          kubectl --context kind-oficina-tf create secret generic oficina-admin-secret \
+            --from-literal="Bootstrap__AdminEmail=$BOOTSTRAP_ADMIN_EMAIL" \
+            --from-literal="Bootstrap__AdminPassword=$BOOTSTRAP_ADMIN_PASSWORD"
+
+      - name: Implantar banco, migration, API e HPA
+        working-directory: infra
+        run: |
+          terraform apply -input=false -auto-approve
+          terraform plan -input=false -detailed-exitcode
+
+      - name: Instalar Metrics Server no laboratório
+        shell: bash
+        run: |
+          kubectl --context kind-oficina-tf apply -f \
+            https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.1/components.yaml
+          printf '%s\n' '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' > "$RUNNER_TEMP/metrics-patch.json"
+          kubectl --context kind-oficina-tf -n kube-system patch deployment metrics-server \
+            --type=json --patch-file "$RUNNER_TEMP/metrics-patch.json"
+          kubectl --context kind-oficina-tf -n kube-system rollout status deployment/metrics-server --timeout=180s
+          for tentativa in {1..20}; do
+            if kubectl --context kind-oficina-tf top pods; then exit 0; fi
+            sleep 6
+          done
+          echo 'Metrics Server não disponibilizou métricas.' >&2
+          exit 1
+
+      - name: Conferir recursos e saúde da API
+        shell: bash
+        run: |
+          kubectl --context kind-oficina-tf get nodes,deployments,pods,services,pvc,jobs,hpa
+          kubectl --context kind-oficina-tf wait --for=condition=complete job/oficina-migracao --timeout=300s
+          kubectl --context kind-oficina-tf rollout status deployment/sqlserver --timeout=300s
+          kubectl --context kind-oficina-tf rollout status deployment/oficina-api --timeout=300s
+          kubectl --context kind-oficina-tf port-forward service/oficina-api 5080:80 > "$RUNNER_TEMP/port-forward.log" 2>&1 &
+          porta_pid=$!
+          trap 'kill "$porta_pid" 2>/dev/null || true' EXIT
+          for tentativa in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:5080/api/saude &&
+               curl --fail --silent --show-error http://127.0.0.1:5080/api/saude/banco; then
+              kubectl --context kind-oficina-tf get hpa oficina-api
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'Endpoints de saúde não responderam.' >&2
+          exit 1
+
+      - name: Diagnóstico em caso de falha
+        if: failure()
+        run: |
+          kubectl --context kind-oficina-tf get pods,services,pvc,jobs,hpa -o wide || true
+          kubectl --context kind-oficina-tf describe pods || true
+          kubectl --context kind-oficina-tf logs job/oficina-migracao --tail=100 || true
+          kubectl --context kind-oficina-tf logs deployment/oficina-api --tail=100 || true
